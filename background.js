@@ -1,5 +1,18 @@
 // FIXME: other providers
-const GROQ_API_KEY = "gsk_set_a_key_here";
+
+const settings = {
+	loaded: false,
+};
+
+async function reloadSettings() {
+	console.log("Reloading settings");
+	settings.groqKey = ((await browser.storage.sync.get("groq-api-key"))["groq-api-key"]) ?? "";
+	settings.loaded = true;
+	console.log(settings);
+}
+
+browser.storage.onChanged.addListener(() => reloadSettings());
+reloadSettings();
 
 function onCreated() {
 	console.log("Item created");
@@ -11,7 +24,13 @@ Do NOT add quotes around the rewritten message.
 `.trim();
 
 async function aiRewriteSelection(info, tab) {
-	if (!tab) return;
+	if (!tab || !settings.loaded) return;
+	if (settings.groqKey?.trim()?.length <= 0) {
+		browser.tabs.executeScript(tab.id, {
+			code: `alert("No Groq API key! Set one in extension preferences")`,
+		});
+		return;
+	}
 	const textToRewrite = info.selectionText;
 	console.log(`Going to rewrite "${textToRewrite}"`);
 	const body = {
@@ -31,7 +50,7 @@ async function aiRewriteSelection(info, tab) {
 	const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
 		method: "POST",
 		headers: {
-			Authorization: `Bearer ${GROQ_API_KEY}`,
+			Authorization: `Bearer ${settings.groqKey}`,
 			"Content-Type": "application/json",
 		},
 		body: JSON.stringify(body),
@@ -43,7 +62,7 @@ async function aiRewriteSelection(info, tab) {
 	// FIXME: CSP stuff?
 	const scr = `
 		(function() {
-			const t = atob("${btoa(rewrittenText)}");
+			const t = decodeURIComponent(atob("${btoa(encodeURIComponent(rewrittenText))}"));
 			//alert(t);
 			let successful = true;
 			try {

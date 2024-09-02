@@ -9,6 +9,16 @@
   },
   "permissions": [
     "menus",
-    "activeTab"
-  ]
+    "activeTab",
+    "storage"
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "browser_style": true
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ai-rewriter-extension@xlabsinc"
+    }
+  }
 }
