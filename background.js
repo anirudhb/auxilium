@@ -19,20 +19,15 @@ function onCreated() {
 }
 
 const SYSTEM_PROMPT = `
-You will rewrite the following message in a professional, helpful, playful way.
+You will rephrase the following message in a professional tone.
 Do NOT add quotes around the rewritten message.
 `.trim();
 
-async function aiRewriteSelection(info, tab) {
-	if (!tab || !settings.loaded) return;
+async function aiRewriteSelection(text) {
 	if (settings.groqKey?.trim()?.length <= 0) {
-		browser.tabs.executeScript(tab.id, {
-			code: `alert("No Groq API key! Set one in extension preferences")`,
-		});
-		return;
+		throw new Error("No Groq API key! Set one in extension preferences");
 	}
-	const textToRewrite = info.selectionText;
-	console.log(`Going to rewrite "${textToRewrite}"`);
+	console.log(`Going to rewrite "${text}"`);
 	const body = {
 		model: "llama-3.1-70b-versatile",
 		messages: [
@@ -42,7 +37,7 @@ async function aiRewriteSelection(info, tab) {
 			},
 			{
 				role: "user",
-				content: textToRewrite,
+				content: text,
 			},
 		],
 	};
@@ -59,24 +54,32 @@ async function aiRewriteSelection(info, tab) {
 	console.log(j);
 	const rewrittenText = j.choices[0].message.content;
 	console.log(`Rewritten to "${rewrittenText}"`);
-	// FIXME: CSP stuff?
-	const scr = `
-		(function() {
-			const t = decodeURIComponent(atob("${btoa(encodeURIComponent(rewrittenText))}"));
-			//alert(t);
-			let successful = true;
+	return rewrittenText;
+}
+
+async function aiRewriteSelectionMenuHandler(info, tab) {
+	const injectionResult = await browser.scripting.executeScript({
+		files: ["content-script.js"],
+		target: {
+			tabId: tab.id,
+		},
+	});
+	const port = browser.tabs.connect(tab.id, {
+		name: "ai-rewriter",
+		frameId: injectionResult.frameId,
+	});
+	port.onMessage.addListener(async function(data) {
+		if (data.type === "rewrite") {
+			let output = {};
 			try {
-				successful = document.execCommand("insertText", false, t);
+				output.rewrittenText = await aiRewriteSelection(data.text);
 			} catch (e) {
-				successful = false;
+				output.error = e.toString();
 			}
-			if (!successful) {
-				console.log("Oops! Couldn't paste text.");
-				alert(t);
-			}
-		})();
-	`.trim();
-	browser.tabs.executeScript(tab.id, { code: scr });
+			port.postMessage({ reply: data.replyId, ...output });
+		}
+	});
+	port.postMessage({ type: "init" });
 }
 
 browser.menus.create({
@@ -88,7 +91,7 @@ browser.menus.create({
 browser.menus.onClicked.addListener((info, tab) => {
 	switch (info.menuItemId) {
 		case "ai-rewrite-selection":
-			aiRewriteSelection(info, tab);
+			aiRewriteSelectionMenuHandler(info, tab);
 			break;
 		default:
 			console.log(`Unknown menu ${info.menuItemId}`);
