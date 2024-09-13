@@ -5,10 +5,11 @@
   "version": "1.0",
   "homepage_url": "https://example.com",
   "background": {
-    "scripts": ["background.js"]
+    "service_worker": "background.js",
+    "type": "module"
   },
   "permissions": [
-    "menus",
+    "contextMenus",
     "activeTab",
     "storage",
     "scripting"

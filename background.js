@@ -6,12 +6,12 @@ const settings = {
 
 async function reloadSettings() {
 	console.log("Reloading settings");
-	settings.groqKey = ((await browser.storage.sync.get("groq-api-key"))["groq-api-key"]) ?? "";
+	settings.groqKey = ((await chrome.storage.sync.get("groq-api-key"))["groq-api-key"]) ?? "";
 	settings.loaded = true;
 	console.log(settings);
 }
 
-browser.storage.onChanged.addListener(() => reloadSettings());
+chrome.storage.onChanged.addListener(() => reloadSettings());
 reloadSettings();
 
 function onCreated() {
@@ -20,8 +20,10 @@ function onCreated() {
 
 const SYSTEM_PROMPT = `
 You will rephrase the following message in a professional tone.
+Keep the message in its original language.
 Do NOT add quotes around the rewritten message.
 `.trim();
+// If the text is in a different language, translate it to English.
 
 async function aiRewriteSelection(text) {
 	if (settings.groqKey?.trim()?.length <= 0) {
@@ -58,15 +60,16 @@ async function aiRewriteSelection(text) {
 }
 
 async function aiRewriteSelectionMenuHandler(info, tab) {
-	const injectionResult = await browser.scripting.executeScript({
+	const injectionResult = await chrome.scripting.executeScript({
 		files: ["content-script.js"],
 		target: {
 			tabId: tab.id,
+			frameIds: [info.frameId],
 		},
 	});
-	const port = browser.tabs.connect(tab.id, {
+	const port = chrome.tabs.connect(tab.id, {
 		name: "ai-rewriter",
-		frameId: injectionResult.frameId,
+		frameId: info.frameId,
 	});
 	port.onMessage.addListener(async function(data) {
 		if (data.type === "rewrite") {
@@ -79,16 +82,17 @@ async function aiRewriteSelectionMenuHandler(info, tab) {
 			port.postMessage({ reply: data.replyId, ...output });
 		}
 	});
-	port.postMessage({ type: "init" });
+	console.log("selection text = " + info.selectionText);
+	port.postMessage({ type: "init", text: info.selectionText });
 }
 
-browser.menus.create({
+chrome.contextMenus.create({
 	id: "ai-rewrite-selection",
 	title: "Rewrite selection with AI",
 	contexts: ["selection"],
 }, onCreated);
 
-browser.menus.onClicked.addListener((info, tab) => {
+chrome.contextMenus.onClicked.addListener((info, tab) => {
 	switch (info.menuItemId) {
 		case "ai-rewrite-selection":
 			aiRewriteSelectionMenuHandler(info, tab);

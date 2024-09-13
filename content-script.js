@@ -3,7 +3,7 @@
  */
 let port;
 
-browser.runtime.onConnect.addListener(function(port_) {
+chrome.runtime.onConnect.addListener(function(port_) {
 	port = port_;
 	// Add the "init" listener
 	port.onMessage.addListener(onInitListener);
@@ -11,29 +11,65 @@ browser.runtime.onConnect.addListener(function(port_) {
 
 function onInitListener(data) {
 	if (data.type === "init") {
-		init();
+		init(data.text);
 		// The content script can be reinitialized multiple times
 		//port.onMessage.removeListener(onInitListener);
 	}
 }
 
-async function init() {
+const markerEl = document.createElement("span");
+markerEl.appendChild(document.createTextNode("\ufeff"));
+
+async function init(text_) {
 	console.log("initializing...");
-	const selection = document.getSelection();
-	if (selection.rangeCount <= 0) return;
-	const range = selection.getRangeAt(0).cloneRange();
-	range.collapse(true);
-	// Get the position so we can put our window above it
-	let selectionRect;
-	// FIXME: bail out if there's selection across multiple elements
-	//if (range.getClientRects().length <= 0) {
-	//	// Single element?
-	//	selectionRect = range.endContainer.getBoundingClientRect();
-	//} else {
-	//	selectionRect = range.getBoundingClientRect();
-	//}
-	selectionRect = range.getClientRects()[0] ?? range.startContainer.getBoundingClientRect();
-	const dialog = new TheDialog(selectionRect, selection.toString());
+	let selectionRect, selectionText;
+	let selectionRange = null;
+	let isInput = false;
+	const activeElement = document.activeElement;
+	// https://bugzilla.mozilla.org/show_bug.cgi?id=85686
+	if (activeElement && activeElement.value) {
+		selectionRect = activeElement.getBoundingClientRect();
+		selectionText = activeElement.value.substring(activeElement.selectionStart, activeElement.selectionEnd);
+		// Create a fake range so that it can be used later
+		//selectionRange = document.createRange();
+		//selectionRange.setStart(activeElement, activeElement.selectionStart);
+		//selectionRange.setEnd(activeElement, activeElement.selectionEnd);
+		selectionRange = {
+			element: activeElement,
+			start: activeElement.selectionStart,
+			end: activeElement.selectionEnd,
+		};
+		isInput = true;
+	} else {
+		const selection = window.getSelection();
+		if (selection.rangeCount <= 0) return;
+		const range = selection.getRangeAt(0).cloneRange();
+		range.collapse(true);
+		// Get the position so we can put our window above it
+		// FIXME: bail out if there's selection across multiple elements
+		//if (range.getClientRects().length <= 0) {
+		//	// Single element?
+		//	selectionRect = range.endContainer.getBoundingClientRect();
+		//} else {
+		//	selectionRect = range.getBoundingClientRect();
+		//}
+		selectionRect = range.getClientRects()[0] ?? range.startContainer.getBoundingClientRect();
+		console.log(selectionRect);
+		selectionText = selection.toString().trim();
+		selectionRange = selection.getRangeAt(0);
+	}
+	if (selectionText.length <= 0) {
+		// Use the provided text instead
+		// (e.g. iframe?)
+		selectionText = text_;
+	}
+	const dialog = new TheDialog(
+		selectionRect,
+		selectionText,
+		// Provide the initial range so it can be modified
+		selectionRange,
+		isInput,
+	);
 	dialog.init();
 }
 
@@ -41,7 +77,7 @@ const dialogTemplate = document.createElement("template");
 dialogTemplate.innerHTML = `
 <style>
 .container {
-	max-width: min(90vh, 400px);
+	max-width: min(90vw, 90%);
 	display: flex;
 	flex-direction: row;
 	gap: 8px;
@@ -49,23 +85,43 @@ dialogTemplate.innerHTML = `
 	padding: 16px;
 	border: 1px solid grey;
 	user-select: none;
+	max-height: 90px;
 }
 #response {
 	flex-grow: 1;
 	user-select: all;
+	overflow-y: auto;
 }
-.btn-group {
+.btn-group, .btn-group-h {
 	display: flex;
 	flex-direction: column;
 	gap: 3px;
 }
+.btn-group-h {
+	flex-direction: row;
+}
+.icon {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+}
 </style>
 <div class="container">
-	<button id="prev" disabled>Previous</button>
+	<!-- <button id="prev" disabled>Previous</button> -->
 	<div id="response"></div>
 	<div class="btn-group">
 		<button id="accept" disabled>Accept</button>
-		<button id="next" disabled>Next</button>
+		<!-- <button id="next" disabled>Next</button> -->
+		<div class="btn-group-h">
+			<!-- FontAwesome chevron-left -->
+			<button id="prev" disabled>
+				<svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--!Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M9.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l192 192c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L77.3 256 246.6 86.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-192 192z"/></svg>
+			</button>
+			<!-- FontAwesome chevron-right -->
+			<button id="next" disabled>
+				<svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--!Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M310.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-192 192c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L242.7 256 73.4 86.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l192 192z"/></svg>
+			</button>
+		</div>
 		<span id="responseNum"></span>
 	</div>
 </div>
@@ -80,28 +136,56 @@ class TheDialog {
 	#nextButton;
 	#acceptButton;
 	#text;
+	#savedRange;
+	#isInput;
 	#generated = [];
 	#selectedIndex = -1;
 
 	constructor(
 		/* @type {DOMRect} */ rect,
 		/* @type {String} */ text,
+		/* @type {Range} */ savedRange,
+		/* @type {boolean} */ isInput,
 	) {
 		console.log("dialog initializing...");
 		this.#text = text;
+		this.#savedRange = savedRange;
+		this.#isInput = isInput;
+		const documentRect = document.documentElement.getBoundingClientRect();
+		// Amend rect by scroll position
+		rect = new DOMRect(
+			rect.x + document.documentElement.scrollLeft,
+			rect.y + document.documentElement.scrollTop,
+			rect.width,
+			rect.height,
+		);
+		// FIXME: make it into a template
+		const holder3 = document.createElement("div");
+		holder3.style.position = "absolute";
+		holder3.style.left = "0px";
+		holder3.style.top = "0px";
+		//holder3.style["z-index"] = "-9999999999999999";
+		holder3.style["pointer-events"] = "none";
+		const holder2 = document.createElement("div");
+		holder2.style.position = "relative";
+		holder2.style.width = `${documentRect.width}px`;
+		holder2.style.height = `${documentRect.height}px`;
+		holder3.appendChild(holder2);
 		const holder = document.createElement("div");
 		holder.style.position = "absolute";
 		holder.style["z-index"] = "9999999999999";
+		holder.style["pointer-events"] = "auto";
+		holder2.appendChild(holder);
 		// FIXME: be smart again
-		const documentRect = document.documentElement.getBoundingClientRect();
 		//holder.style.left = `${Math.ceil(rect.left + 10)}px`;
 		//holder.style.bottom = `${Math.floor(documentRect.height - rect.top - 10)}px`;
-		if (rect.left < window.innerWidth / 2) {
-			holder.style.left = `${rect.left + 10}px`;
-		} else {
-			holder.style.right = `${documentRect.width - rect.right + 10}px`;
-		}
-		if (rect.top < 30) {
+		holder.style.left = `${rect.left + 10}px`;
+		//if (rect.left < window.innerWidth / 2) {
+		//	holder.style.left = `${rect.left + 10}px`;
+		//} else {
+		//	holder.style.right = `${documentRect.width - rect.right + 10}px`;
+		//}
+		if (rect.top < 100) {
 			holder.style.top = `${rect.bottom + 5}px`;
 		} else {
 			holder.style.bottom = `${documentRect.height - rect.top + 5}px`;
@@ -114,9 +198,9 @@ class TheDialog {
 		this.#responseNum = shadow.querySelector("#responseNum");
 		this.#nextButton = shadow.querySelector("#next");
 		this.#acceptButton = shadow.querySelector("#accept");
-		this.#holder = holder;
+		this.#holder = holder3;
 		this.#shadow = shadow;
-		document.body.appendChild(holder);
+		document.body.appendChild(holder3);
 	}
 
 	init() {
@@ -144,7 +228,55 @@ class TheDialog {
 		});
 		// TODO: accept button
 		this.#acceptButton.addEventListener("click", () => {
-			alert(`Selected reply: ${this.#generated[this.#selectedIndex]}`);
+			const t = this.#generated[this.#selectedIndex];
+			let successful;
+			if (!this.#isInput) {
+				// Modify the current selection using the saved selection
+				const s = window.getSelection();
+				const r = this.#savedRange;
+				if (r.endContainer.isContentEditable) {
+					s.removeAllRanges();
+					s.addRange(r);
+					r.deleteContents();
+					const n = document.createTextNode(t);
+					r.insertNode(n);
+					r.setEnd(n);
+					r.collapse(true);
+					s.removeAllRanges();
+					s.addRange(r);
+					successful = true;
+				} else {
+					successful = false;
+				}
+			} else {
+				this.#savedRange.element.focus();
+				this.#savedRange.element.setSelectionRange(this.#savedRange.start, this.#savedRange.end);
+				// FIXME: undo is broken in Gmail composer?
+				// FIXME: undo is completely broken in Chrome, seemingly
+				// Replace the text
+				const oldText = this.#savedRange.element.value;
+				const newText = oldText.substring(0, this.#savedRange.start) + t + oldText.substring(this.#savedRange.end);
+				this.#savedRange.element.value = newText;
+				this.#savedRange.element.setSelectionRange(this.#savedRange.start, this.#savedRange.start + t.length);
+				//// Fallback to old paste method
+				//try {
+				//	successful = document.execCommand("insertText", false, t);
+				//	// Reselect the new text
+				//	if (successful) {
+				//		this.#savedRange.element.setSelectionRange(this.#savedRange.start, this.#savedRange.start + t.length);
+				//	}
+				//} catch {
+				//	successful = false;
+				//}
+			}
+			if (!successful) {
+				this.#acceptButton.textContent = "Paste failed";
+				this.#acceptButton.disabled = true;
+				setTimeout(() => {
+					this.syncResponse();
+				}, 2000);
+			}
+			//alert(`Selected reply: ${this.#generated[this.#selectedIndex]}`);
 		});
 
 		// Remove if selection changes
@@ -152,7 +284,8 @@ class TheDialog {
 			// If our own element is selected, it's okay
 			const sel = document.getSelection();
 			if (sel.rangeCount > 0) {
-				const r = sel.getRangeAt(0);
+				const r = sel.getRangeAt(0).cloneRange();
+				r.collapse(true);
 				if (this.#shadow.contains(r.endContainer)) return;
 			}
 			document.removeEventListener("selectionchange", selectionListener);
@@ -171,6 +304,9 @@ class TheDialog {
 		this.#responseBox.textContent = this.#generated[this.#selectedIndex];
 		this.#responseNum.textContent = `${this.#selectedIndex+1}/${this.#generated.length}`;
 		this.#prevButton.disabled =	this.#selectedIndex <= 0;
+		// Reset "accept" button
+		this.#acceptButton.textContent = "Accept";
+		this.#acceptButton.disabled = false;
 	}
 
 	async generateNewReply() {
