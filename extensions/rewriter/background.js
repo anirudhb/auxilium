@@ -23,7 +23,6 @@ You will rephrase the following message in a professional tone.
 Keep the message in its original language.
 Do NOT add quotes around the rewritten message.
 `.trim();
-// If the text is in a different language, translate it to English.
 
 async function aiRewriteSelection(text) {
 	if (settings.groqKey?.trim()?.length <= 0) {
@@ -60,7 +59,7 @@ async function aiRewriteSelection(text) {
 }
 
 async function aiRewriteSelectionMenuHandler(info, tab) {
-	const injectionResult = await chrome.scripting.executeScript({
+	await chrome.scripting.executeScript({
 		files: ["content-script.js"],
 		target: {
 			tabId: tab.id,

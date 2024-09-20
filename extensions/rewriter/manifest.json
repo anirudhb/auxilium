@@ -1,9 +1,9 @@
 {
   "description": "Rewrites selected text using AI",
   "manifest_version": 3,
-  "name": "AI Rewriter",
-  "version": "1.0",
-  "homepage_url": "https://example.com",
+  "name": "Auxilium Rewriter",
+  "version": "1.0.0",
+  "homepage_url": "https://github.com/anirudhb/auxilium",
   "background": {
     "service_worker": "background.js",
     "type": "module"
@@ -19,7 +19,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "ai-rewriter-extension@xlabsinc"
+      "id": "auxilium-rewriter@anirudhb"
     }
   }
 }

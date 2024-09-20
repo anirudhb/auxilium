@@ -12,8 +12,6 @@ chrome.runtime.onConnect.addListener(function(port_) {
 function onInitListener(data) {
 	if (data.type === "init") {
 		init(data.text);
-		// The content script can be reinitialized multiple times
-		//port.onMessage.removeListener(onInitListener);
 	}
 }
 
@@ -30,10 +28,6 @@ async function init(text_) {
 	if (activeElement && activeElement.value) {
 		selectionRect = activeElement.getBoundingClientRect();
 		selectionText = activeElement.value.substring(activeElement.selectionStart, activeElement.selectionEnd);
-		// Create a fake range so that it can be used later
-		//selectionRange = document.createRange();
-		//selectionRange.setStart(activeElement, activeElement.selectionStart);
-		//selectionRange.setEnd(activeElement, activeElement.selectionEnd);
 		selectionRange = {
 			element: activeElement,
 			start: activeElement.selectionStart,
@@ -45,14 +39,6 @@ async function init(text_) {
 		if (selection.rangeCount <= 0) return;
 		const range = selection.getRangeAt(0).cloneRange();
 		range.collapse(true);
-		// Get the position so we can put our window above it
-		// FIXME: bail out if there's selection across multiple elements
-		//if (range.getClientRects().length <= 0) {
-		//	// Single element?
-		//	selectionRect = range.endContainer.getBoundingClientRect();
-		//} else {
-		//	selectionRect = range.getBoundingClientRect();
-		//}
 		selectionRect = range.getClientRects()[0] ?? range.startContainer.getBoundingClientRect();
 		console.log(selectionRect);
 		selectionText = selection.toString().trim();
@@ -159,12 +145,10 @@ class TheDialog {
 			rect.width,
 			rect.height,
 		);
-		// FIXME: make it into a template
 		const holder3 = document.createElement("div");
 		holder3.style.position = "absolute";
 		holder3.style.left = "0px";
 		holder3.style.top = "0px";
-		//holder3.style["z-index"] = "-9999999999999999";
 		holder3.style["pointer-events"] = "none";
 		const holder2 = document.createElement("div");
 		holder2.style.position = "relative";
@@ -176,22 +160,13 @@ class TheDialog {
 		holder.style["z-index"] = "9999999999999";
 		holder.style["pointer-events"] = "auto";
 		holder2.appendChild(holder);
-		// FIXME: be smart again
-		//holder.style.left = `${Math.ceil(rect.left + 10)}px`;
-		//holder.style.bottom = `${Math.floor(documentRect.height - rect.top - 10)}px`;
 		holder.style.left = `${rect.left + 10}px`;
-		//if (rect.left < window.innerWidth / 2) {
-		//	holder.style.left = `${rect.left + 10}px`;
-		//} else {
-		//	holder.style.right = `${documentRect.width - rect.right + 10}px`;
-		//}
 		if (rect.top < 100) {
 			holder.style.top = `${rect.bottom + 5}px`;
 		} else {
 			holder.style.bottom = `${documentRect.height - rect.top + 5}px`;
 		}
-		// TODO: change to "closed" after debugging is finished
-		const shadow = holder.attachShadow({ mode: "open" });
+		const shadow = holder.attachShadow({ mode: "closed" });
 		shadow.appendChild(dialogTemplate.content.cloneNode(true));
 		this.#prevButton = shadow.querySelector("#prev");
 		this.#responseBox = shadow.querySelector("#response");
@@ -226,7 +201,6 @@ class TheDialog {
 			this.#selectedIndex = newIndex;
 			this.syncResponse();
 		});
-		// TODO: accept button
 		this.#acceptButton.addEventListener("click", () => {
 			const t = this.#generated[this.#selectedIndex];
 			let successful;
@@ -253,21 +227,10 @@ class TheDialog {
 				this.#savedRange.element.setSelectionRange(this.#savedRange.start, this.#savedRange.end);
 				// FIXME: undo is broken in Gmail composer?
 				// FIXME: undo is completely broken in Chrome, seemingly
-				// Replace the text
 				const oldText = this.#savedRange.element.value;
 				const newText = oldText.substring(0, this.#savedRange.start) + t + oldText.substring(this.#savedRange.end);
 				this.#savedRange.element.value = newText;
 				this.#savedRange.element.setSelectionRange(this.#savedRange.start, this.#savedRange.start + t.length);
-				//// Fallback to old paste method
-				//try {
-				//	successful = document.execCommand("insertText", false, t);
-				//	// Reselect the new text
-				//	if (successful) {
-				//		this.#savedRange.element.setSelectionRange(this.#savedRange.start, this.#savedRange.start + t.length);
-				//	}
-				//} catch {
-				//	successful = false;
-				//}
 			}
 			if (!successful) {
 				this.#acceptButton.textContent = "Paste failed";
@@ -276,7 +239,6 @@ class TheDialog {
 					this.syncResponse();
 				}, 2000);
 			}
-			//alert(`Selected reply: ${this.#generated[this.#selectedIndex]}`);
 		});
 
 		// Remove if selection changes
@@ -353,24 +315,3 @@ class TheDialog {
 		this.#acceptButton.disabled = false;
 	}
 }
-
-/*
-	// FIXME: CSP stuff?
-	const scr = `
-		(function() {
-			const t = decodeURIComponent(atob("${btoa(encodeURIComponent(rewrittenText))}"));
-			//alert(t);
-			let successful = true;
-			try {
-				successful = document.execCommand("insertText", false, t);
-			} catch (e) {
-				successful = false;
-			}
-			if (!successful) {
-				console.log("Oops! Couldn't paste text.");
-				alert(t);
-			}
-		})();
-	`.trim();
-	browser.tabs.executeScript(tab.id, { code: scr });
-	*/
